@@ -1,34 +1,6 @@
-# Project: Ollama Waker (Go)
-
-This repository provides a small Go HTTP service that:
-- Loads configuration from a `.env` file (or environment variables)
-- Sends a Wake-on-LAN magic packet to `DEVICE_MAC` when the target device (Ollama host) is not reachable
-- Polls until the Ollama API port is reachable
-- Forwards incoming requests to the real Ollama instance once it is awake
-
-The service is dockerized and a `docker-compose.yaml` is included for easy deployment.
-
----
-
-### File: go.mod
-
-```go
-module github.com/example/ollama-waker
-
-go 1.21
-
-require github.com/joho/godotenv v1.5.1
-```
-
----
-
-### File: main.go
-
-```go
 package main
 
 import (
-	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -40,8 +12,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 var (
@@ -55,9 +25,6 @@ var (
 )
 
 func initConfig() error {
-	// Load .env if present (silent if missing)
-	_ = godotenv.Load()
-
 	deviceMAC = os.Getenv("DEVICE_MAC")
 	deviceIP = os.Getenv("DEVICE_IP")
 	devicePort = os.Getenv("DEVICE_PORT")
@@ -215,10 +182,10 @@ func sendMagicPacket(mac string) error {
 
 	// Magic packet: 6 x 0xFF followed by 16 repetitions of MAC
 	packet := make([]byte, 6+16*6)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		packet[i] = 0xFF
 	}
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		copy(packet[6+i*6:], macBytes)
 	}
 
@@ -249,99 +216,3 @@ func sendMagicPacket(mac string) error {
 	}
 	return lastErr
 }
-```
-
----
-
-### File: Dockerfile
-
-```dockerfile
-# Build stage
-FROM golang:1.21-alpine AS build
-WORKDIR /src
-
-# Install git for go modules and ca-certificates
-RUN apk add --no-cache git ca-certificates
-
-COPY go.mod .
-COPY main.go .
-RUN go env -w GOPROXY=https://proxy.golang.org
-RUN go build -o /bin/ollama-waker
-
-# Runtime image
-FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
-COPY --from=build /bin/ollama-waker /usr/local/bin/ollama-waker
-
-EXPOSE 11434
-ENTRYPOINT ["/usr/local/bin/ollama-waker"]
-```
-
----
-
-### File: .env.example
-
-```text
-# Copy this to .env and fill the values
-DEVICE_MAC=00:11:22:33:44:55
-DEVICE_IP=192.168.1.100
-DEVICE_PORT=11434
-
-# Where this service will listen (default :11434)
-# LISTEN_ADDR=:11434
-
-# How often to poll for the Ollama port (seconds)
-# POLL_INTERVAL_SEC=2
-
-# How long to wait for device to wake before timing out (seconds)
-# WAKE_TIMEOUT_SEC=120
-```
-
----
-
-### File: docker-compose.yaml
-
-```yaml
-version: '3.8'
-services:
-  ollama-waker:
-    build: .
-    container_name: ollama-waker
-    env_file: .env
-    ports:
-      - "11434:11434" # map host port to proxy port so Open WebUI can talk to localhost:11434
-    restart: unless-stopped
-```
-
----
-
-### File: README.md
-
-```md
-# Ollama Waker (Go)
-
-A small Go service that wakes a sleeping gaming PC (via Wake-on-LAN) before forwarding requests to a self-hosted Ollama instance. Useful when you want an always-on proxy that ensures your remote LLM host is awake before Open WebUI or other clients send requests.
-
-## Features
-- Reads configuration from `.env`
-- Sends WoL magic packets (no external `wakeonlan` binary required)
-- Polls the Ollama port until it's reachable, with configurable timeout
-- Forwards requests (including streaming) to the Ollama host
-
-## Quickstart
-1. Copy `.env.example` to `.env` and edit values.
-2. Build & run with Docker Compose:
-
-```bash
-docker compose up -d --build
-```
-
-3. Point your Open WebUI Ollama provider to the host running this service (e.g., `http://home-server:11434`).
-
-## Env vars
-See `.env.example`. Required: `DEVICE_MAC`, `DEVICE_IP`, `DEVICE_PORT`.
-
-## Notes
-- This proxy waits for the Ollama TCP port to accept connections before forwarding. If your Ollama instance requires extra warmup time after the TCP socket opens, consider increasing `WAKE_TIMEOUT_SEC`.
-- The service attempts to send the magic packet both to the device IP and to `255.255.255.255:9`.
-

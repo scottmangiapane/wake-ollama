@@ -1,0 +1,8 @@
+services:
+  wake-ollama:
+    build: .
+    container_name: wake-ollama
+    env_file: .env
+    ports:
+      - 127.0.0.1:${LISTEN_ADDR-11434}:${LISTEN_ADDR-11434}
+    restart: unless-stopped
