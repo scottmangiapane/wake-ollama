@@ -10,10 +10,10 @@ A small Go service that wakes a sleeping devices (via Wake-on-LAN) before forwar
 
 ## Quickstart
 1. Copy `.env.example` to `.env` and edit values.
-2. Build & run:
+2. Build & run with Docker Compose:
 
 ```bash
-go build . -o wake-ollama
+docker compose up -d --build
 ```
 
 3. Point your Open WebUI Ollama provider to the host running this service (e.g., `http://home-server:11434`).
@@ -24,4 +24,3 @@ See `.env.example`. Required: `DEVICE_MAC`, `DEVICE_IP`, `DEVICE_PORT`.
 ## Notes
 - This proxy waits for the Ollama TCP port to accept connections before forwarding. If your Ollama instance requires extra warmup time after the TCP socket opens, consider increasing `WAKE_TIMEOUT_SEC`.
 - The service attempts to send the magic packet both to the device IP and to `255.255.255.255:9`.
-- You can run the proxy automatically at boot on Linux using the included systemd `wake-ollama.service` file.

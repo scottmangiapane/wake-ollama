@@ -1,0 +1,8 @@
+services:
+  wake-ollama:
+    build: .
+    container_name: wake-ollama
+    env_file: .env
+    network_mode: host
+    restart: unless-stopped
+
