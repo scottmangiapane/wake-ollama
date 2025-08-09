@@ -1,6 +1,6 @@
-# Ollama Waker
+# Wake Ollama
 
-A small Go service that wakes a sleeping gaming PC (via Wake-on-LAN) before forwarding requests to a self-hosted Ollama instance. Useful when you want an always-on proxy that ensures your remote LLM host is awake before Open WebUI or other clients send requests.
+A small Go service that wakes a sleeping devices (via Wake-on-LAN) before forwarding requests to a self-hosted Ollama instance. Useful when you want an always-on proxy that ensures your remote LLM host is awake before Open WebUI or other clients send requests.
 
 ## Features
 - Reads configuration from `.env`
@@ -10,10 +10,10 @@ A small Go service that wakes a sleeping gaming PC (via Wake-on-LAN) before forw
 
 ## Quickstart
 1. Copy `.env.example` to `.env` and edit values.
-2. Build & run with Docker Compose:
+2. Build & run:
 
 ```bash
-docker compose up -d --build
+go build . -o wake-ollama
 ```
 
 3. Point your Open WebUI Ollama provider to the host running this service (e.g., `http://home-server:11434`).
@@ -24,3 +24,4 @@ See `.env.example`. Required: `DEVICE_MAC`, `DEVICE_IP`, `DEVICE_PORT`.
 ## Notes
 - This proxy waits for the Ollama TCP port to accept connections before forwarding. If your Ollama instance requires extra warmup time after the TCP socket opens, consider increasing `WAKE_TIMEOUT_SEC`.
 - The service attempts to send the magic packet both to the device IP and to `255.255.255.255:9`.
+- You can run the proxy automatically at boot on Linux using the included systemd `wake-ollama.service` file.
