@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -170,49 +168,37 @@ func isUp(ip, port string) bool {
 
 // sendMagicPacket crafts and sends a WoL magic packet to the broadcast address
 func sendMagicPacket(mac string) error {
-	// Normalize and parse MAC
-	clean := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(mac, ":", ""), "-", ""), ".", "")
-	if len(clean) != 12 {
-		return fmt.Errorf("mac should be 12 hex chars, got %q", mac)
-	}
-	macBytes, err := hex.DecodeString(clean)
+	hwAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return fmt.Errorf("invalid mac: %v", err)
+		return fmt.Errorf("invalid MAC address: %w", err)
 	}
 
-	// Magic packet: 6 x 0xFF followed by 16 repetitions of MAC
-	packet := make([]byte, 6+16*6)
-	for i := range 6 {
+	// Build magic packet: 6x 0xFF followed by 16x MAC address
+	packet := make([]byte, 6+16*len(hwAddr))
+	for i := 0; i < 6; i++ {
 		packet[i] = 0xFF
 	}
-	for i := range 16 {
-		copy(packet[6+i*6:], macBytes)
+	for i := 6; i < len(packet); i += len(hwAddr) {
+		copy(packet[i:], hwAddr)
 	}
 
-	// Try sending to the device's IP and to broadcast
-	addrs := []string{deviceIP + ":9", "255.255.255.255:9"}
-	var lastErr error
-	for _, a := range addrs {
-		udpAddr, err := net.ResolveUDPAddr("udp", a)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		conn, err := net.DialUDP("udp", nil, udpAddr)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		// Set write deadline
-		conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-		_, err = conn.Write(packet)
-		conn.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		// success
-		return nil
+	// Broadcast address + standard WOL UDP port 9
+	addr := &net.UDPAddr{
+		IP:   net.IPv4bcast,
+		Port: 9,
 	}
-	return lastErr
+
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return fmt.Errorf("failed to dial UDP: %w", err)
+	}
+	defer conn.Close()
+
+	// Enable broadcast (needed on some systems)
+	if err := conn.SetWriteBuffer(len(packet)); err != nil {
+		return fmt.Errorf("failed to set write buffer: %w", err)
+	}
+
+	_, err = conn.Write(packet)
+	return err
 }
