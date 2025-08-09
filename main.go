@@ -16,7 +16,7 @@ var (
 	deviceMAC    string
 	deviceIP     string
 	devicePort   string
-	ollamaTarget string
+	target       string
 	listenAddr   string
 	pollInterval time.Duration
 	wakeTimeout  time.Duration
@@ -35,7 +35,7 @@ func initConfig() error {
 		return errors.New("DEVICE_MAC, DEVICE_IP and DEVICE_PORT must be set")
 	}
 
-	ollamaTarget = fmt.Sprintf("http://%s:%s", deviceIP, devicePort)
+	target = fmt.Sprintf("http://%s:%s", deviceIP, devicePort)
 
 	pi := os.Getenv("POLL_INTERVAL_SEC")
 	if pi == "" {
@@ -72,7 +72,7 @@ func main() {
 
 	http.HandleFunc("/", wakeAndProxyHandler)
 
-	log.Printf("Starting Ollama Waker proxy on %s -> %s", listenAddr, ollamaTarget)
+	log.Printf("Starting proxy on %s -> %s", listenAddr, target)
 	if err := http.ListenAndServe(listenAddr, nil); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
@@ -113,8 +113,8 @@ func wakeAndProxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Proxy request to Ollama
-	targetURL, _ := url.Parse(ollamaTarget)
+	// Proxy request to target device
+	targetURL, _ := url.Parse(target)
 	proxyTo := targetURL.String() + r.URL.Path
 	if r.URL.RawQuery != "" {
 		proxyTo += "?" + r.URL.RawQuery
@@ -139,7 +139,7 @@ func wakeAndProxyHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("error forwarding request: %v", err)
-		http.Error(w, "error contacting Ollama", http.StatusBadGateway)
+		http.Error(w, "error contacting target device", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()

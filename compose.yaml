@@ -1,7 +1,7 @@
 services:
-  wake-ollama:
+  wake-on-lan-proxy:
     build: .
-    container_name: wake-ollama
+    container_name: wake-on-lan-proxy
     env_file: .env
     network_mode: host
     restart: unless-stopped

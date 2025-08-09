@@ -8,13 +8,13 @@ RUN apk add --no-cache git ca-certificates
 COPY go.mod .
 COPY main.go .
 RUN go env -w GOPROXY=https://proxy.golang.org
-RUN go build -o /bin/wake-ollama
+RUN go build -o /bin/wake-on-lan-proxy
 
 # Runtime image
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
-COPY --from=build /bin/wake-ollama /usr/local/bin/wake-ollama
+COPY --from=build /bin/wake-on-lan-proxy /usr/local/bin/wake-on-lan-proxy
 
 EXPOSE ${LISTEN_ADDR}
-ENTRYPOINT ["/usr/local/bin/wake-ollama"]
+ENTRYPOINT ["/usr/local/bin/wake-on-lan-proxy"]
 
