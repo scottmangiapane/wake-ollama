@@ -28,7 +28,7 @@ func initConfig() error {
 	devicePort = os.Getenv("DEVICE_PORT")
 	listenAddr = os.Getenv("LISTEN_ADDR")
 	if listenAddr == "" {
-		listenAddr = ":11434"
+		listenAddr = "11434"
 	}
 
 	if deviceMAC == "" || deviceIP == "" || devicePort == "" {
@@ -73,7 +73,7 @@ func main() {
 	http.HandleFunc("/", wakeAndProxyHandler)
 
 	log.Printf("Starting proxy on %s -> %s", listenAddr, target)
-	if err := http.ListenAndServe(listenAddr, nil); err != nil {
+	if err := http.ListenAndServe(":"+listenAddr, nil); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
