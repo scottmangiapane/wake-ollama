@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"time"
@@ -70,7 +70,7 @@ func main() {
 		log.Fatalf("config error: %v", err)
 	}
 
-	http.HandleFunc("/", wakeAndProxyHandler)
+	http.Handle("/", proxyHandler(target))
 
 	log.Printf("Starting proxy on %s -> %s", listenAddr, target)
 	if err := http.ListenAndServe(":"+listenAddr, nil); err != nil {
@@ -78,20 +78,29 @@ func main() {
 	}
 }
 
-func wakeAndProxyHandler(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(target string) http.Handler {
+	targetURL, _ := url.Parse(target)
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ensureDeviceIsOnline(w, r) {
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
+}
+
+func ensureDeviceIsOnline(w http.ResponseWriter, r *http.Request) bool {
 	ctx := r.Context()
 
-	// If device is not up, wake it and wait
 	if !isUp(deviceIP, devicePort) {
 		log.Printf("device %s appears down; sending WoL", deviceIP)
 		if err := sendMagicPacket(deviceMAC); err != nil {
 			log.Printf("failed to send magic packet: %v", err)
-			// don't fail yet — still try to proxy which will likely fail
 		} else {
 			log.Printf("magic packet sent to %s", deviceMAC)
 		}
 
-		// wait until target is reachable or timeout
 		deadline := time.Now().Add(wakeTimeout)
 		for {
 			if isUp(deviceIP, devicePort) {
@@ -100,61 +109,21 @@ func wakeAndProxyHandler(w http.ResponseWriter, r *http.Request) {
 			if time.Now().After(deadline) {
 				log.Printf("timeout waiting for device to come up")
 				http.Error(w, "timeout waiting for device to wake", http.StatusGatewayTimeout)
-				return
+				return false
 			}
 			select {
 			case <-ctx.Done():
 				log.Printf("request cancelled while waiting for device")
 				http.Error(w, "client cancelled", http.StatusRequestTimeout)
-				return
+				return false
 			case <-time.After(pollInterval):
-				// loop
 			}
 		}
 	}
 
-	// Proxy request to target device
-	targetURL, _ := url.Parse(target)
-	proxyTo := targetURL.String() + r.URL.Path
-	if r.URL.RawQuery != "" {
-		proxyTo += "?" + r.URL.RawQuery
-	}
-
-	req, err := http.NewRequestWithContext(ctx, r.Method, proxyTo, r.Body)
-	if err != nil {
-		log.Printf("failed to create proxy request: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	// Copy relevant headers (but don't forward Host)
-	for name, values := range r.Header {
-		for _, v := range values {
-			req.Header.Add(name, v)
-		}
-	}
-	req.Host = targetURL.Host
-
-	client := &http.Client{Timeout: 0}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("error forwarding request: %v", err)
-		http.Error(w, "error contacting target device", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Copy response headers
-	for k, vv := range resp.Header {
-		for _, v := range vv {
-			w.Header().Add(k, v)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	return true
 }
 
-// isUp checks if ip:port accepts TCP connections
 func isUp(ip, port string) bool {
 	addr := net.JoinHostPort(ip, port)
 	timeout := 1 * time.Second
@@ -166,7 +135,6 @@ func isUp(ip, port string) bool {
 	return true
 }
 
-// sendMagicPacket crafts and sends a WoL magic packet to the broadcast address
 func sendMagicPacket(mac string) error {
 	hwAddr, err := net.ParseMAC(mac)
 	if err != nil {
